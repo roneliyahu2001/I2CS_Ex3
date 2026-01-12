@@ -1,3 +1,5 @@
+package assignments.Ex3;
+
 import exe.ex3.game.PacManAlgo;
 import exe.ex3.game.PacmanGame;
 
@@ -12,12 +14,12 @@ public class ManualAlgo implements PacManAlgo{
     public int move(PacmanGame game) {
         int ans = PacmanGame.ERR;
         Character cmd = Ex3Main.getCMD();
-            if (cmd != null) {
-                if (cmd == 'w') {ans = PacmanGame.UP;}
-                if (cmd == 'x') {ans = PacmanGame.DOWN;}
-                if (cmd == 'a') {ans = PacmanGame.LEFT;}
-                if (cmd == 'd') {ans = PacmanGame.RIGHT;}
-            }
-            return  ans;
+        if (cmd != null) {
+            if (cmd == 'w') {ans = PacmanGame.UP;}
+            if (cmd == 'x') {ans = PacmanGame.DOWN;}
+            if (cmd == 'a') {ans = PacmanGame.LEFT;}
+            if (cmd == 'd') {ans = PacmanGame.RIGHT;}
+        }
+        return  ans;
     }
 }
