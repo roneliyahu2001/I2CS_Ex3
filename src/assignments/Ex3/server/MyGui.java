@@ -9,7 +9,7 @@ import java.awt.Color;
 
 /**
  * The main GUI class for the Pacman game.
- * Uses StdDraw to render the game state, including the board, Pacman, and ghosts.
+ * Uses StdDraw to render the game state, including the board, Pacman, and ghosts./
  */
 public class MyGui {
     private static final int CODE = 0;
