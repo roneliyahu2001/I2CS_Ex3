@@ -5,7 +5,8 @@ import exe.ex3.game.GhostCL;
 import exe.ex3.game.PacManAlgo;
 import exe.ex3.game.PacmanGame;
 import exe.ex3.game.StdDraw;
-import java.awt.Color;
+
+import java.awt.*;
 
 /**
  * The main GUI class for the Pacman game.
