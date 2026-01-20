@@ -7,35 +7,25 @@ import java.util.Queue;
 import java.util.Random;
 
 /**
- * Implements the server-side logic for the Pacman game.
- * This class manages the game state, board, player movement, ghosts' AI, and scoring.
+ * Server Logic Implementation.
+ * Manages game rules, ghost AI using BFS, and collision handling.
+ * Includes specific logic to prevent ghosts from re-entering the "Ghost House".
  */
 public class MyPacmanGame implements PacmanGame {
     private int[][] board;
-    private String pos = "13,23"; // Starting position of Pacman
+    private String pos = "13,22"; // Pacman starting position
     private int status = INIT;
     private int score = 0;
 
-    // Initial positions for the ghosts
+    // Ghosts starting positions (inside the Ghost House)
     private String[] ghostsPos = {"13,13", "14,13", "12,13"};
-    // Tracks which ghosts were eaten during the current power-up mode
     private boolean[] ghostsEaten = {false, false, false};
 
     private Random rand = new Random();
-
     private int powerUpTimer = 0;
-    // Duration of the power-up effect in game ticks
     private static final int POWER_UP_DURATION = 40;
-
-    // Counts moves to control ghost speed relative to Pacman
     private int moveCount = 0;
 
-    /**
-     * Initializes the game board and state.
-     * @param level The level number (not used in this implementation).
-     * @param id The user ID.
-     * @return "OK" if initialization succeeds.
-     */
     @Override
     public String init(int level, String id, boolean cy, long seed, double res, int dt, int scenario) {
         this.board = createClassicMap();
@@ -43,28 +33,17 @@ public class MyPacmanGame implements PacmanGame {
         return "OK";
     }
 
-    /**
-     * Returns the current game board matrix.
-     * 0 = Empty, 1 = Wall, 2 = Dot, 3 = Power-up.
-     */
     @Override
     public int[][] getGame(int id) { return board; }
 
-    /**
-     * Returns the current position of the Pacman as a string "x,y".
-     */
     @Override
     public String getPos(int id) { return pos; }
 
-    /**
-     * Returns the array of Ghost objects with their current status and position.
-     */
     @Override
     public GhostCL[] getGhosts(int id) {
         GhostCL[] ghosts = new GhostCL[ghostsPos.length];
         for (int i = 0; i < ghostsPos.length; i++) {
             final String p = ghostsPos[i];
-            // Ghost is blue (type 1) only if power-up is active and it hasn't been eaten yet
             final int type = (powerUpTimer > 0 && !ghostsEaten[i]) ? 1 : 0;
 
             ghosts[i] = new GhostCL() {
@@ -78,62 +57,55 @@ public class MyPacmanGame implements PacmanGame {
         return ghosts;
     }
 
-    /**
-     * Moves the Pacman in the given direction and updates the game state.
-     * Handles movement, collisions, scoring, and ghost AI.
-     * @param dir The direction to move (UP, DOWN, LEFT, RIGHT).
-     * @return "OK" or "DONE" if the game is over.
-     */
     @Override
     public String move(int dir) {
         if (status == DONE) return "DONE";
 
         moveCount++;
 
-        // --- Pacman Movement ---
+        // --- 1. Handle Pacman Movement ---
         int[] xy = parseXY(pos);
         int nextX = xy[0], nextY = xy[1];
 
+        // Adjust coordinates based on direction (UP decreases Y)
         if (dir == UP) nextY--;
         if (dir == DOWN) nextY++;
         if (dir == LEFT) nextX--;
         if (dir == RIGHT) nextX++;
 
-        // Handle tunnel (teleportation)
+        // Handle Tunneling (Teleportation)
         if (nextX < 0) nextX = board.length - 1;
         else if (nextX >= board.length) nextX = 0;
 
-        // Manage power-up timer
+        // Handle PowerUp Timer
         if (powerUpTimer > 0) {
             powerUpTimer--;
             if (powerUpTimer == 0) {
-                // Reset eaten status when power-up ends
+                // Reset eaten status when powerup ends
                 for(int i=0; i<ghostsEaten.length; i++) ghostsEaten[i] = false;
             }
         }
 
-        // Validate move and update board
+        // Validate Move and Update State
         if (isValid(nextX, nextY)) {
             pos = nextX + "," + nextY;
 
-            // Eat items
-            if (board[nextX][nextY] == 2) { // Regular dot
+            // Handle coin collection
+            if (board[nextX][nextY] == 2) {
                 board[nextX][nextY] = 0;
                 score += 10;
-            } else if (board[nextX][nextY] == 3) { // Power-up
+            } else if (board[nextX][nextY] == 3) { // Power pellet
                 board[nextX][nextY] = 0;
                 score += 50;
                 powerUpTimer = POWER_UP_DURATION;
-                // Reset eaten status for new power-up
                 for(int i=0; i<ghostsEaten.length; i++) ghostsEaten[i] = false;
             }
         }
 
         checkCollision();
 
-        // --- Ghost AI ---
-        // Ghosts move only 3 out of 4 ticks to make Pacman slightly faster
-        if (moveCount % 4 != 0) {
+        // --- 2. Handle Ghost Movement (Every 4th frame) ---
+        if (moveCount % 4 == 0) {
             moveGhostsSmart();
         }
 
@@ -144,33 +116,28 @@ public class MyPacmanGame implements PacmanGame {
         return "OK";
     }
 
-    /**
-     * Checks if Pacman collides with any ghost.
-     * Handles both losing condition and eating ghosts.
-     */
     private void checkCollision() {
         int[] pacXY = parseXY(pos);
         for (int i = 0; i < ghostsPos.length; i++) {
             int[] ghostXY = parseXY(ghostsPos[i]);
+
+            // Check if Pacman and Ghost occupy the same tile
             if (pacXY[0] == ghostXY[0] && pacXY[1] == ghostXY[1]) {
                 if (powerUpTimer > 0 && !ghostsEaten[i]) {
-                    // Pacman eats ghost
+                    // Eat Ghost
                     score += 200;
-                    ghostsPos[i] = "13,14"; // Send back to ghost house
+                    ghostsPos[i] = "13,14"; // Send back to house
                     ghostsEaten[i] = true;
                 } else {
-                    // Ghost catches Pacman
+                    // Game Over
                     status = DONE;
                 }
             }
         }
     }
 
-    /**
-     * Checks if all dots have been eaten.
-     * @return true if the board is clear of dots.
-     */
     private boolean isGameOver() {
+        // Check if any coins remain
         for (int x = 0; x < board.length; x++) {
             for (int y = 0; y < board[0].length; y++) {
                 if (board[x][y] == 2 || board[x][y] == 3) return false;
@@ -180,8 +147,8 @@ public class MyPacmanGame implements PacmanGame {
     }
 
     /**
-     * Controls the movement logic for all ghosts.
-     * Implements different behaviors (chase, scatter, frighten) and BFS pathfinding.
+     * Main Ghost AI Logic.
+     * Handles exiting the Ghost House and chasing Pacman via BFS.
      */
     private void moveGhostsSmart() {
         int[] pacXY = parseXY(pos);
@@ -190,46 +157,29 @@ public class MyPacmanGame implements PacmanGame {
             int[] gxy = parseXY(ghostsPos[i]);
             int gx = gxy[0], gy = gxy[1];
 
-            // 1. Exit ghost house logic
+            // A. Ghost House Exit Logic
+            // If ghost is inside the house box (approx coords), force it out.
             if (gy >= 12 && gy <= 16 && gx >= 10 && gx <= 17) {
-                if (isValid(gx, gy - 1) || (gx == 13 && gy == 12)) {
-                    ghostsPos[i] = gx + "," + (gy - 1);
-                } else if (gx < 13 && isValid(gx+1, gy)) {
-                    ghostsPos[i] = (gx+1) + "," + gy;
-                } else if (gx > 13 && isValid(gx-1, gy)) {
-                    ghostsPos[i] = (gx-1) + "," + gy;
+                // Guide ghost to center (13,14) then UP
+                if (gx == 13 || gx == 14) {
+                    if (isValid(gx, gy - 1) || gy == 12) {
+                        ghostsPos[i] = gx + "," + (gy - 1);
+                    }
+                } else if (gx < 13) {
+                    ghostsPos[i] = (gx + 1) + "," + gy; // Move Right
                 } else {
-                    moveRandom(i, gx, gy);
+                    ghostsPos[i] = (gx - 1) + "," + gy; // Move Left
                 }
-                continue;
+                continue; // Skip standard movement for this turn
             }
 
-            // 2. Main movement logic
+            // B. Standard Movement (Chase or Flee)
             boolean isScared = (powerUpTimer > 0 && !ghostsEaten[i]);
-            boolean moveRandomly = false;
 
             if (isScared) {
-                moveRandomly = true; // Ghosts scatter when scared
+                moveRandom(i, gx, gy); // Random movement when scared
             } else {
-                // Determine behavior based on ghost index (simulating personality)
-                int chance = rand.nextInt(100);
-
-                if (i == 0) {
-                    // Red ghost: Aggressive, small chance of error (40%)
-                    if (chance < 40) moveRandomly = true;
-                } else if (i == 1) {
-                    // Pink ghost: Moderate chance of error (60%)
-                    if (chance < 60) moveRandomly = true;
-                } else {
-                    // Blue ghost: Mostly random (80%)
-                    if (chance < 80) moveRandomly = true;
-                }
-            }
-
-            if (moveRandomly) {
-                moveRandom(i, gx, gy);
-            } else {
-                // Use BFS to find the shortest path to Pacman
+                // BFS Chase Logic
                 int[] bestMove = getNextMoveBFS(gx, gy, pacXY[0], pacXY[1]);
                 if (bestMove != null) {
                     ghostsPos[i] = bestMove[0] + "," + bestMove[1];
@@ -240,9 +190,6 @@ public class MyPacmanGame implements PacmanGame {
         }
     }
 
-    /**
-     * Moves a ghost in a random valid direction.
-     */
     private void moveRandom(int i, int gx, int gy) {
         int[][] dirs = {{0,-1}, {0,1}, {-1,0}, {1,0}};
         // Shuffle directions
@@ -254,10 +201,8 @@ public class MyPacmanGame implements PacmanGame {
         for(int[] d : dirs) {
             int nx = gx + d[0];
             int ny = gy + d[1];
-
-            // Handle tunnel
-            if (nx < 0) nx = board.length - 1;
-            else if (nx >= board.length) nx = 0;
+            // Handle tunneling
+            if (nx < 0) nx = board.length - 1; else if (nx >= board.length) nx = 0;
 
             if(isValid(nx, ny)) {
                 ghostsPos[i] = nx + "," + ny;
@@ -267,13 +212,14 @@ public class MyPacmanGame implements PacmanGame {
     }
 
     /**
-     * Calculates the next move using BFS (Breadth-First Search).
-     * @return The coordinates of the next step towards the target.
+     * Calculates the Shortest Path to the target using BFS.
+     * Crucially, treats the "Ghost House" as a wall to prevent re-entry.
      */
     private int[] getNextMoveBFS(int startX, int startY, int targetX, int targetY) {
         int w = board.length;
         int h = board[0].length;
         int[][] dist = new int[w][h];
+
         for(int i=0; i<w; i++) for(int j=0; j<h; j++) dist[i][j] = -1;
 
         Queue<int[]> q = new LinkedList<>();
@@ -289,19 +235,18 @@ public class MyPacmanGame implements PacmanGame {
             for(int[] d : dirs) {
                 int nx = cx + d[0];
                 int ny = cy + d[1];
-
-                // Handle tunnel during search
                 if (nx < 0) nx = w - 1; else if (nx >= w) nx = 0;
 
-                if (isValid(nx, ny) && dist[nx][ny] == -1) {
+                boolean insideGhostHouse = (ny >= 12 && ny <= 16 && nx >= 10 && nx <= 17);
+
+                if (isValid(nx, ny) && !insideGhostHouse && dist[nx][ny] == -1) {
                     dist[nx][ny] = dist[cx][cy] + 1;
                     q.add(new int[]{nx, ny});
                 }
             }
         }
 
-        // Find neighbor with the smallest distance value
-        int bestDist = 999999;
+        int bestDist = Integer.MAX_VALUE;
         int[] bestMove = null;
         int[][] dirs = {{0,-1}, {0,1}, {-1,0}, {1,0}};
 
@@ -320,24 +265,15 @@ public class MyPacmanGame implements PacmanGame {
         return bestMove;
     }
 
-    /**
-     * Checks if a coordinate is walkable (not a wall).
-     */
     private boolean isValid(int x, int y) {
         return x >= 0 && x < board.length && y >= 0 && y < board[0].length && board[x][y] != 1;
     }
 
     @Override public int getStatus() { return status; }
 
-    /**
-     * Generates the game board map.
-     * @return A 2D array representing the map.
-     */
     private int[][] createClassicMap() {
-        int W = 28;
-        int H = 31;
+        int W = 28, H = 31;
         int[][] b = new int[W][H];
-
         String[] mapStr = {
                 "1111111111111111111111111111",
                 "1222222222222112222222222221",
@@ -371,14 +307,12 @@ public class MyPacmanGame implements PacmanGame {
                 "1222222222222222222222222221",
                 "1111111111111111111111111111"
         };
-
         for (int y = 0; y < H; y++) {
             for (int x = 0; x < W; x++) {
                 char c = mapStr[y].charAt(x);
                 b[x][y] = Character.getNumericValue(c);
             }
         }
-
         return b;
     }
 
@@ -390,7 +324,6 @@ public class MyPacmanGame implements PacmanGame {
     }
 
     @Override public String getData(int id) { return "Score: " + score; }
-
     @Override public boolean isCyclic() { return false; }
     @Override public void play() {}
     @Override public String end(int id) { status = DONE; return "DONE"; }

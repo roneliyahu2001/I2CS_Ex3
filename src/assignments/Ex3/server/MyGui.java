@@ -1,6 +1,6 @@
 package assignments.Ex3.server;
 
-import assignments.Ex3.Ex3Algo;
+import assignments.Ex3.server.MyAlgo;
 import exe.ex3.game.GhostCL;
 import exe.ex3.game.PacManAlgo;
 import exe.ex3.game.PacmanGame;
@@ -22,7 +22,7 @@ public class MyGui {
         g.init(CODE, "323951038", false, 0, 1.0, 50, 4);
 
         // Initialize the playing algorithm (Client)
-        PacManAlgo algo = new Ex3Algo();
+        PacManAlgo algo = new MyAlgo();
 
         int[][] board = g.getGame(CODE);
         int w = board.length, h = board[0].length;

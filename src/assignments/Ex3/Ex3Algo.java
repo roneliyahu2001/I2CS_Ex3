@@ -1,185 +1,125 @@
 package assignments.Ex3;
 
+import exe.ex3.game.Game;
 import exe.ex3.game.GhostCL;
 import exe.ex3.game.PacManAlgo;
 import exe.ex3.game.PacmanGame;
-import java.awt.Color;
-import java.util.LinkedList;
-import java.util.Queue;
+import java.awt.*;
 
-/**
- * This class implements the logic for the Pacman client (Ex3Algo).
- * The algorithm uses a hybrid approach:
- * 1. Survival Mode: If a ghost is detected within a close radius, the Pacman calculates the best escape route.
- * 2. Chase Mode: If no immediate danger exists, the Pacman uses BFS (Breadth-First Search) to find the shortest path to the nearest dot.
- */
 public class Ex3Algo implements PacManAlgo {
+    private int _count;
 
-    /**
-     * Returns the identifier of the algorithm.
-     * @return String representing the algorithm name.
-     */
+    public Ex3Algo() {
+        _count = 0;
+    }
+
     @Override
     public String getInfo() {
-        return "Smart BFS Algo";
+        return null;
     }
 
     /**
-     * The main method called by the game engine at every step.
-     * It determines the next move for the Pacman based on the current board state.
-     *
-     * @param game The game interface providing access to the board, ghosts, and player status.
-     * @return The direction code (UP, DOWN, LEFT, RIGHT) for the next move.
+     * This method decides the next move for Pacman.
+     * It gets the game board and marks ghosts as walls to avoid them.
+     * It finds the current position of Pacman.
+     * It looks for the closest food (pink dots) using BFS.
+     * It returns the direction of the shortest safe path to the food.
      */
     @Override
     public int move(PacmanGame game) {
+        _count++;
+
         int[][] board = game.getGame(0);
-        String pos = game.getPos(0);
-        int[] myPos = parseXY(pos);
+        Map myMap = new Map(board);
+        myMap.setCyclic(false);
+        int blue = Game.getIntColor(Color.BLUE, 0);
         GhostCL[] ghosts = game.getGhosts(0);
-
-        // Step 1: Safety check - Is there a ghost nearby?
-        // If a ghost is dangerously close, we prioritize survival over points.
-        int dangerousGhostDir = checkGhostDanger(board, myPos, ghosts);
-        if (dangerousGhostDir != -1) {
-            return dangerousGhostDir; // Execute escape maneuver
-        }
-
-        // Step 2: If safe, use BFS to find the nearest food.
-        return bfs(board, myPos[0], myPos[1]);
-    }
-
-    /**
-     * Checks if any ghost is within a critical radius (danger zone).
-     * If a threat is detected, calculates the move that maximizes the distance from the ghost.
-     *
-     * @param board The game board.
-     * @param myPos The current position of the Pacman.
-     * @param ghosts The array of ghost objects.
-     * @return The best direction to escape, or -1 if no immediate danger is detected.
-     */
-    private int checkGhostDanger(int[][] board, int[] myPos, GhostCL[] ghosts) {
-        int bestEscapeDir = -1;
-        double maxDist = -1;
-
         for (GhostCL g : ghosts) {
-            int[] gPos = parseXY(g.getPos(0));
-            double dist = Math.sqrt(Math.pow(myPos[0] - gPos[0], 2) + Math.pow(myPos[1] - gPos[1], 2));
+            if (g != null) {
+                String[] gPos = g.getPos(0).split(",");
+                int gx = Integer.parseInt(gPos[0]);
+                int gy = Integer.parseInt(gPos[1]);
+                myMap.setPixel(gx, gy, blue);
+                markGhostNeighbors(myMap, gx, gy, blue);
+            }
+        }
+        String posStr = game.getPos(0).toString();
+        String[] parts = posStr.split(",");
+        int px = Integer.parseInt(parts[0]);
+        int py = Integer.parseInt(parts[1]);
+        Pixel2D pacmanPos = new Index2D(px, py);
 
-            // Check if the ghost is close (distance < 3) and dangerous (type != 1 means not eatable)
-            if (dist < 3 && g.getType() != 1) {
+        Map2D distMap = myMap.allDistance(pacmanPos, blue);
+        Pixel2D target = findClosestPink(game, distMap);
 
-                int[] dirs = {PacmanGame.UP, PacmanGame.DOWN, PacmanGame.LEFT, PacmanGame.RIGHT};
+        if (target != null) {
+            Pixel2D[] path = myMap.shortestPath(pacmanPos, target, blue);
+            if (path != null && path.length > 1) {
+                return getDirection(path[0], path[1]);
+            }
+        }
 
-                // Evaluate all possible moves to find the one that maximizes distance from the ghost
-                for (int dir : dirs) {
-                    int nextX = myPos[0];
-                    int nextY = myPos[1];
-                    if (dir == PacmanGame.UP) nextY--;
-                    if (dir == PacmanGame.DOWN) nextY++;
-                    if (dir == PacmanGame.LEFT) nextX--;
-                    if (dir == PacmanGame.RIGHT) nextX++;
+        return randomDir();
+    }
 
-                    if (isValid(board, nextX, nextY)) {
-                        double newDist = Math.sqrt(Math.pow(nextX - gPos[0], 2) + Math.pow(nextY - gPos[1], 2));
-                        if (newDist > maxDist) {
-                            maxDist = newDist;
-                            bestEscapeDir = dir;
-                        }
+    /**
+     * This method marks the 4 neighbors of a ghost as walls.
+     * It prevents Pacman from moving to a spot right next to a ghost.
+     */
+    private void markGhostNeighbors(Map myMap, int gx, int gy, int wall) {
+        int[] dx = {1, -1, 0, 0};
+        int[] dy = {0, 0, 1, -1};
+        for (int i = 0; i < 4; i++) {
+            int nx = gx + dx[i];
+            int ny = gy + dy[i];
+            if (nx >= 0 && nx < myMap.getWidth() && ny >= 0 && ny < myMap.getHeight()) {
+                myMap.setPixel(nx, ny, wall);
+            }
+        }
+    }
+
+    /**
+     * This method finds the nearest food (pink pixel) on the board.
+     * It uses the distance map to check which food is the closest to Pacman.
+     */
+    private Pixel2D findClosestPink(PacmanGame game, Map2D distMap) {
+        int[][] board = game.getGame(0);
+        int pink = Game.getIntColor(Color.PINK, 0);
+        Pixel2D closest = null;
+        int minDist = Integer.MAX_VALUE;
+
+        for (int x = 0; x < board.length; x++) {
+            for (int y = 0; y < board[0].length; y++) {
+                if (board[x][y] == pink) {
+                    int d = distMap.getPixel(x, y);
+                    if (d > 0 && d < minDist) {
+                        minDist = d;
+                        closest = new Index2D(x, y);
                     }
                 }
-                return bestEscapeDir; // Return the safest direction
             }
         }
-        return -1; // No danger detected
+        return closest;
     }
 
     /**
-     * Performs a Breadth-First Search (BFS) to find the shortest path to the nearest target.
-     * Targets include regular dots (2) and power-ups (3).
-     *
-     * @param board The game board.
-     * @param startX The starting X coordinate.
-     * @param startY The starting Y coordinate.
-     * @return The direction of the first step towards the target, or a random move if no target is reachable.
+     * This method determines the move direction based on two pixels.
+     * It compares the X and Y coordinates of the current and next pixel
      */
-    private static int bfs(int[][] board, int startX, int startY) {
-        int w = board.length;
-        int h = board[0].length;
-        boolean[][] visited = new boolean[w][h];
-        Queue<int[]> queue = new LinkedList<>();
-
-        int[] dirs = {PacmanGame.UP, PacmanGame.DOWN, PacmanGame.LEFT, PacmanGame.RIGHT};
-
-        // Initialize queue with immediate neighbors
-        for (int dir : dirs) {
-            int nextX = startX;
-            int nextY = startY;
-
-            if (dir == PacmanGame.UP) nextY--;
-            if (dir == PacmanGame.DOWN) nextY++;
-            if (dir == PacmanGame.LEFT) nextX--;
-            if (dir == PacmanGame.RIGHT) nextX++;
-
-            if (isValid(board, nextX, nextY)) {
-                // If immediate neighbor is a target, move there
-                if (board[nextX][nextY] == 2 || board[nextX][nextY] == 3) {
-                    return dir;
-                }
-                // Store state: {x, y, initialDirection}
-                queue.add(new int[]{nextX, nextY, dir});
-                visited[nextX][nextY] = true;
-            }
-        }
-
-        visited[startX][startY] = true;
-
-        // BFS Loop
-        while (!queue.isEmpty()) {
-            int[] current = queue.poll();
-            int currX = current[0];
-            int currY = current[1];
-            int firstDir = current[2];
-
-            int[][] moves = {{0, -1}, {0, 1}, {-1, 0}, {1, 0}};
-
-            for (int[] move : moves) {
-                int nx = currX + move[0];
-                int ny = currY + move[1];
-
-                if (isValid(board, nx, ny) && !visited[nx][ny]) {
-                    // Found a target (dot or power-up)
-                    if (board[nx][ny] == 2 || board[nx][ny] == 3) {
-                        return firstDir; // Return the direction that led to this path
-                    }
-
-                    visited[nx][ny] = true;
-                    queue.add(new int[]{nx, ny, firstDir});
-                }
-            }
-        }
-
-        // Fallback: if no path found, make a random move to avoid getting stuck
-        int randomDir = (int)(Math.random() * 4);
-        return randomDir;
+    public int getDirection(Pixel2D curr, Pixel2D next) {
+        if (next.getX() > curr.getX()) return Game.RIGHT;
+        if (next.getX() < curr.getX()) return Game.LEFT;
+        if (next.getY() > curr.getY()) return Game.UP;
+        if (next.getY() < curr.getY()) return Game.DOWN;
+        return Game.ERR;
     }
 
     /**
-     * Helper method to validate if a coordinate is within bounds and not a wall.
+     * This method returns a random move direction.
+     * It is used when no safe path to food is found.
      */
-    private static boolean isValid(int[][] board, int x, int y) {
-        int w = board.length;
-        int h = board[0].length;
-        return x >= 0 && x < w && y >= 0 && y < h && board[x][y] != 1;
-    }
-
-    /**
-     * Parses a position string "x,y" into an integer array.
-     */
-    private static int[] parseXY(String s) {
-        try {
-            String[] p = s.split(",");
-            return new int[]{(int)Double.parseDouble(p[0]), (int)Double.parseDouble(p[1])};
-        } catch (Exception e) { return new int[]{0,0}; }
+    private static int randomDir() {
+        int[] dirs = {Game.UP, Game.LEFT, Game.DOWN, Game.RIGHT};
+        return dirs[(int) (Math.random() * dirs.length)];
     }
 }
